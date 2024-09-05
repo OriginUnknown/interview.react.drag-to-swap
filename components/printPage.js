@@ -4,9 +4,12 @@ import Actions from "./actions";
 import Photo from "./photo";
 import {
   findPhotoIntersection,
+  calculateDropPositionForAdjacentPhotosOverlap,
+  calculateDropPositionForEmptyPage,
+  calculateDropPositionForSingleAndSourcePhotoOverlap,
   calculateDropPositionForSourceOverlapsFirstPhoto,
   calculateDropPositionForSourceOverlapsLastPhoto,
-  calculateDropPositionForAdjacentPhotosOverlap,
+  removeAnimationClasses,
 } from "../utils/utils";
 
 const Wrapper = styled.div`
@@ -31,6 +34,7 @@ const Title = styled.div`
 `;
 
 const PageLayout = styled.div`
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   background: #2778a5;
@@ -42,12 +46,14 @@ const PageLayout = styled.div`
 `;
 
 export default function PrintPage({ data }) {
-  const [positionOfSelectedImage, setPositionOfSelectedImage] = useState({
+  const initialMouseCoords = {
     height: 0,
     width: 0,
     x: 0,
     y: 0,
-  });
+  };
+  const [positionOfSelectedImage, setPositionOfSelectedImage] =
+    useState(initialMouseCoords);
 
   let currentImageCount = -1;
 
@@ -94,12 +100,9 @@ export default function PrintPage({ data }) {
      * TODO: find out why event returns entire documrnt rather than
      * target page section.
      */
+    // Vacant page...
     if (event.target.id !== "") {
-      const targetPage = document.querySelector(`#${event.target.id}`);
-
-      if (!targetPage.hasChildNodes() || targetPage.children.length === 1) {
-        targetPage.appendChild(sourcePhoto);
-      }
+      calculateDropPositionForEmptyPage(event, sourcePhoto);
       return;
     }
     /**
@@ -119,19 +122,17 @@ export default function PrintPage({ data }) {
     }
 
     /**
-     * If there are two or more images on a page, calculate where to position
-     * the source photo.
+     * If there two or more images on a page have intersected, calculate
+     * the where to position the source photo based on the value of the
+     * `closestPhotoElement` variable.
      */
     const closestPhotoElement = findPhotoIntersection(
       positionOfSelectedImage,
       photosFromDropZone
     );
     /**
-     * If source photo hasn't overlapped with any of the photos on a page, append
-     * the source image to that page.
+     * Possible permutations of where to place to drop a photo on a page.
      */
-    const noOverlap = closestPhotoElement === undefined;
-    // If single and source photo overlap
     const singleAndSourcePhotoOverlap =
       closestPhotoElement.previousSibling === null &&
       closestPhotoElement.nextSibling === null;
@@ -148,21 +149,10 @@ export default function PrintPage({ data }) {
       closestPhotoElement.previousSibling !== null &&
       closestPhotoElement.nextSibling !== null;
 
-    if (noOverlap) {
-      targetDropZone.appendChild(sourcePhoto);
-      return;
-    }
-
     console.log(">>> intersection has occurred, continue...");
 
     if (singleAndSourcePhotoOverlap) {
-      targetDropZone.insertBefore(sourcePhoto, closestPhotoElement);
-      return;
-    }
-
-    if (sourceOverlapsLastPhoto) {
-      calculateDropPositionForSourceOverlapsLastPhoto(
-        photosFromDropZone,
+      calculateDropPositionForSingleAndSourcePhotoOverlap(
         targetDropZone,
         sourcePhoto,
         closestPhotoElement
@@ -172,6 +162,16 @@ export default function PrintPage({ data }) {
 
     if (sourceOverlapsFirstPhoto) {
       calculateDropPositionForSourceOverlapsFirstPhoto(
+        photosFromDropZone,
+        targetDropZone,
+        sourcePhoto,
+        closestPhotoElement
+      );
+      return;
+    }
+
+    if (sourceOverlapsLastPhoto) {
+      calculateDropPositionForSourceOverlapsLastPhoto(
         photosFromDropZone,
         targetDropZone,
         sourcePhoto,
@@ -190,12 +190,17 @@ export default function PrintPage({ data }) {
       return;
     }
 
+    /**
+     * Catch all clause just in case there's a scenario that hasn't been
+     * considered.
+     */
     console.log(">>> Anything else...");
     targetDropZone.appendChild(sourcePhoto);
+    return;
   };
 
   const resetUIState = (event) => {
-    event.target.classList.remove("drag-start");
+    removeAnimationClasses(event);
   };
 
   return (
